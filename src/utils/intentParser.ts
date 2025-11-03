@@ -1,32 +1,32 @@
 // src/utils/intentParser.ts
-import { ParsedIntent } from '../types';
+import { ParsedIntent, Intent } from '../types';
 
-export function parseUserIntent(message: string): ParsedIntent {
-  const lower = message.toLowerCase().trim();
+export function parseIntent(message: string): ParsedIntent {
+  const lowerMessage = message.toLowerCase().trim();
 
   // Help command
-  if (lower.startsWith('/help') || lower === 'help') {
-    return { type: 'help' };
+  if (lowerMessage === '/help' || lowerMessage === 'help') {
+    return { intent: 'help' };
   }
 
-  // Learn command
-  if (lower.startsWith('/learn')) {
-    const topic = message.replace(/^\/learn\s*/i, '').trim();
-    return { type: 'learn', topic: topic || 'JavaScript' };
+  // Learn command: /learn [topic]
+  if (lowerMessage.startsWith('/learn')) {
+    const topic = message.substring(6).trim();
+    return { intent: 'learn', topic: topic || 'JavaScript' };
   }
 
-  // Challenge command
-  if (lower.startsWith('/challenge')) {
-    const match = lower.match(/\/(easy|medium|hard)/i);
-    const difficulty = (match?.[1]?.toLowerCase() as 'easy' | 'medium' | 'hard') || 'medium';
-    return { type: 'challenge', difficulty };
+  // Challenge command: /challenge [difficulty]
+  if (lowerMessage.startsWith('/challenge')) {
+    const parts = lowerMessage.split(' ');
+    const difficulty = (parts[1] as 'easy' | 'medium' | 'hard') || 'easy';
+    return { intent: 'challenge', difficulty };
   }
 
   // Progress command
-  if (lower.startsWith('/progress') || lower === 'progress') {
-    return { type: 'progress' };
+  if (lowerMessage === '/progress' || lowerMessage === 'progress') {
+    return { intent: 'progress' };
   }
 
-  // General query
-  return { type: 'general' };
+  // Default to general question
+  return { intent: 'general' };
 }

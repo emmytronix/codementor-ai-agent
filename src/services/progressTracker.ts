@@ -1,91 +1,108 @@
 // src/services/progressTracker.ts
 import { UserProgress } from '../types';
 
-export class UserProgressManager {
-  private progress: Map<string, UserProgress> = new Map();
+const userProgress = new Map<string, UserProgress>();
 
-  getProgress(userId: string): UserProgress {
-    if (!this.progress.has(userId)) {
-      this.progress.set(userId, {
-        userId,
-        topicsCompleted: 0,
-        challengesSolved: 0,
-        streak: 0,
-        xp: 0,
-        achievements: [],
-        lastActive: new Date(),
-      });
+export async function trackProgress(
+  userId: string,
+  type: 'topic' | 'challenge',
+  item: string
+): Promise<void> {
+  let progress = userProgress.get(userId) || {
+    userId,
+    topicsCompleted: [],
+    challengesSolved: [],
+    totalXP: 0,
+    currentStreak: 0,
+    lastActiveDate: new Date().toISOString(),
+    achievements: []
+  };
+
+  if (type === 'topic') {
+    if (!progress.topicsCompleted.includes(item)) {
+      progress.topicsCompleted.push(item);
+      progress.totalXP += 10;
+
+      // Check achievements
+      if (progress.topicsCompleted.length === 1) {
+        progress.achievements.push('Ìæì First Steps!');
+      }
+      if (progress.topicsCompleted.length === 5) {
+        progress.achievements.push('Ì≥ö Knowledge Seeker!');
+      }
+      if (progress.topicsCompleted.length === 10) {
+        progress.achievements.push('Ìºü Learning Master!');
+      }
     }
-    return this.progress.get(userId)!;
   }
 
-  addTopic(userId: string): void {
-    const p = this.getProgress(userId);
-    p.topicsCompleted++;
-    p.xp += 10;
-    p.lastActive = new Date();
-    
-    if (p.topicsCompleted === 1) {
-      p.achievements.push('üéì First Steps!');
-    }
-    if (p.topicsCompleted === 5) {
-      p.achievements.push('üìö Knowledge Seeker!');
-    }
-    if (p.topicsCompleted === 10) {
-      p.achievements.push('üåü Learning Master!');
+  if (type === 'challenge') {
+    if (!progress.challengesSolved.includes(item)) {
+      progress.challengesSolved.push(item);
+
+      // Award XP based on difficulty
+      if (item.includes('easy')) {
+        progress.totalXP += 25;
+      } else if (item.includes('medium')) {
+        progress.totalXP += 50;
+      } else if (item.includes('hard')) {
+        progress.totalXP += 100;
+      }
+
+      // Check achievements
+      if (progress.challengesSolved.length === 1) {
+        progress.achievements.push('Ì≤™ Problem Solver!');
+      }
+      if (progress.challengesSolved.length === 10) {
+        progress.achievements.push('Ì¥• Challenge Champion!');
+      }
     }
   }
 
-  addChallenge(userId: string, difficulty: string): void {
-    const p = this.getProgress(userId);
-    p.challengesSolved++;
-    p.lastActive = new Date();
-    
-    // Award XP based on difficulty
-    if (difficulty === 'easy') {
-      p.xp += 25;
-    } else if (difficulty === 'medium') {
-      p.xp += 50;
+  // XP achievement
+  if (progress.totalXP >= 500 && !progress.achievements.includes('‚≠ê XP Master!')) {
+    progress.achievements.push('‚≠ê XP Master!');
+  }
+
+  // Update streak
+  const today = new Date().toISOString().split('T')[0];
+  const lastActive = progress.lastActiveDate.split('T')[0];
+  
+  if (today !== lastActive) {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (lastActive === yesterdayStr) {
+      progress.currentStreak++;
     } else {
-      p.xp += 100;
+      progress.currentStreak = 1;
     }
 
-    // Unlock achievements
-    if (p.challengesSolved === 1) {
-      p.achievements.push('üí™ Problem Solver!');
-    }
-    if (p.challengesSolved === 10) {
-      p.achievements.push('üî• Challenge Champion!');
-    }
-    if (p.xp >= 500) {
-      p.achievements.push('‚≠ê XP Master!');
+    progress.lastActiveDate = new Date().toISOString();
+
+    if (progress.currentStreak === 7) {
+      progress.achievements.push('Ì¥• Week Warrior!');
     }
   }
 
-  updateStreak(userId: string): void {
-    const p = this.getProgress(userId);
-    const now = new Date();
-    const lastActive = new Date(p.lastActive);
-    const hoursSinceActive = (now.getTime() - lastActive.getTime()) / (1000 * 60 * 60);
+  userProgress.set(userId, progress);
+}
 
-    if (hoursSinceActive < 24) {
-      p.streak++;
-    } else if (hoursSinceActive < 48) {
-      // Streak continues if within 48 hours
-    } else {
-      p.streak = 0;
-    }
+export async function getProgress(userId: string): Promise<UserProgress> {
+  return userProgress.get(userId) || {
+    userId,
+    topicsCompleted: [],
+    challengesSolved: [],
+    totalXP: 0,
+    currentStreak: 0,
+    lastActiveDate: new Date().toISOString(),
+    achievements: []
+  };
+}
 
-    p.lastActive = now;
-
-    if (p.streak === 7) {
-      p.achievements.push('üî• Week Warrior!');
-    }
-  }
-
-  getLeaderboard(limit: number = 10): UserProgress[] {
-    return Array.from(this.progress.values())
-      .sort((a, b) => b.xp - a.xp)
-      .slice(0, limit);
-  }
+export function getLeaderboard() {
+  return Array.from(userProgress.values())
+    .sort((a, b) => b.totalXP - a.totalXP)
+    .slice(0, 10);
 }

@@ -1,5 +1,3 @@
-// src/types/index.ts
-
 export interface Challenge {
   id: string;
   title: string;
