@@ -1,10 +1,10 @@
 // src/index.ts
 import express from 'express';
 import dotenv from 'dotenv';
-import { parseUserIntent } from './utils/intentParser';
-import { UserProgressManager } from './services/progressTracker';
-import { ChallengeManager } from './services/challengeManager';
+import { parseIntent } from './utils/intentParser';
 import { generateTutorial, answerQuestion } from './services/openaiService';
+import { getRandomChallenge } from './services/challengeManager';
+import { trackProgress, getProgress } from './services/progressTracker';
 
 dotenv.config();
 
@@ -13,38 +13,37 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Initialize managers
-const progressManager = new UserProgressManager();
-const challengeManager = new ChallengeManager();
-
-// Health check
+// Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({
+  res.json({ 
     status: 'healthy',
     agent: 'CodeMentor',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: process.uptime()
   });
 });
 
-// A2A endpoint for Telex
+// A2A endpoint for CodeMentor agent
 app.post('/a2a/agent/codeMentorAgent', async (req, res) => {
   try {
     const { message, userId } = req.body;
-    
+
     console.log('📨 Received:', message);
     console.log('👤 User:', userId);
 
     if (!message || !userId) {
-      return res.status(400).json({ error: 'Missing message or userId' });
+      return res.status(400).json({ 
+        error: 'Missing required fields: message and userId' 
+      });
     }
 
-    const intent = parseUserIntent(message);
-    console.log('🎯 Intent:', intent.type);
+    // Parse user intent
+    const parsed = parseIntent(message);
+    console.log('🎯 Intent:', parsed.intent);
 
-    let response: string;
+    let response = '';
 
-    switch (intent.type) {
+    switch (parsed.intent) {
       case 'help':
         response = `🤖 **CodeMentor Commands**
 
@@ -64,14 +63,28 @@ Let's code together! 🚀`;
         break;
 
       case 'learn':
-        console.log('📚 Generating tutorial for:', intent.topic);
-        response = await generateTutorial(intent.topic || 'JavaScript');
-        progressManager.addTopic(userId);
-        progressManager.updateStreak(userId);
+        console.log('📚 Learning topic:', parsed.topic);
+        if (parsed.topic) {
+          response = await generateTutorial(parsed.topic);
+          await trackProgress(userId, 'topic', parsed.topic);
+        } else {
+          response = `📚 **Let's learn something!**
+
+Use: \`/learn [topic]\`
+
+Example topics:
+- \`/learn promises\`
+- \`/learn async/await\`
+- \`/learn closures\`
+- \`/learn arrays\`
+
+What would you like to learn? 🎓`;
+        }
         break;
 
       case 'challenge':
-        const challenge = challengeManager.getChallenge(intent.difficulty || 'medium');
+        console.log('🎯 Challenge difficulty:', parsed.difficulty);
+        const challenge = getRandomChallenge(parsed.difficulty || 'easy');
         response = `🎯 **${challenge.difficulty.toUpperCase()} CHALLENGE**
 
 **${challenge.title}**
@@ -80,58 +93,69 @@ ${challenge.description}
 
 **Example:**
 \`\`\`
-Input: ${challenge.example.input}
-Output: ${challenge.example.output}
+${challenge.example}
 \`\`\`
 
-💡 **Hint:** ${challenge.hints[0]}
+💡 **Hint:** ${challenge.hint}
 
 Reply with your solution when ready! Good luck! 🚀`;
-        progressManager.addChallenge(userId, challenge.difficulty);
+        
+        await trackProgress(userId, 'challenge', challenge.id);
         break;
 
       case 'progress':
-        const progress = progressManager.getProgress(userId);
+        console.log('📊 Checking progress for:', userId);
+        const progress = await getProgress(userId);
+        
+        const achievementsList = progress.achievements.length > 0
+          ? progress.achievements.map((a: any) => `✨ ${a}`).join('\n')
+          : 'No achievements yet - keep learning!';
+
         response = `📊 **Your Learning Journey**
 
 🎓 **Topics Completed:** ${progress.topicsCompleted}
 💪 **Challenges Solved:** ${progress.challengesSolved}
-⭐ **Total XP:** ${progress.xp}
-🔥 **Streak:** ${progress.streak} days
+⭐ **Total XP:** ${progress.totalXP}
+🔥 **Streak:** ${progress.currentStreak} days
 
 🏆 **Achievements:**
-${progress.achievements.length > 0 
-  ? progress.achievements.map(a => `✨ ${a}`).join('\n') 
-  : '📝 Complete challenges to unlock achievements!'}
+${achievementsList}
 
 Keep up the great work, ${userId}! 🚀`;
         break;
 
       case 'general':
-      default:
         console.log('💬 Answering general question');
         response = await answerQuestion(message);
         break;
+
+      default:
+        response = `👋 Hey! I'm CodeMentor, your AI programming tutor!
+
+Try:
+- \`/help\` - See all commands
+- \`/learn [topic]\` - Learn something new
+- \`/challenge easy\` - Practice coding
+
+Or just ask me a question! 🚀`;
     }
 
     console.log('✅ Response generated');
-    
+
     res.json({
       response,
       metadata: {
         userId,
         timestamp: new Date().toISOString(),
-        intent: intent.type,
-      },
+        intent: parsed.intent
+      }
     });
 
   } catch (error: any) {
-    console.error('❌ ERROR:', error);
-    console.error('Stack:', error.stack);
-    
-    res.status(500).json({
+    console.error('❌ Error processing request:', error);
+    res.status(500).json({ 
       error: 'Failed to process request',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      message: error.message 
     });
   }
 });
@@ -141,5 +165,5 @@ app.listen(PORT, () => {
   console.log(`🚀 CodeMentor Agent running on port ${PORT}`);
   console.log(`📡 A2A endpoint: http://localhost:${PORT}/a2a/agent/codeMentorAgent`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`✅ Ready to mentor!`);
+  console.log('✅ Ready to mentor!');
 });
